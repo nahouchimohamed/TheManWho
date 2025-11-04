@@ -1,0 +1,4 @@
+Samurai combat frames include CC0 art from:
+- sebshady (OpenGameArt: Samurai Sprites / Seppuku Jisei)
+- DezrasDragons (OpenGameArt: Samurai Animated) used during prototyping
+Title background and character concepts created for this prototype.
