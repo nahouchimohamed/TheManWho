@@ -18,7 +18,7 @@ static func from_sheet(
 		var indices: Array = anims[anim_name]
 		frames.add_animation(anim_name)
 		frames.set_animation_speed(anim_name, fps)
-		frames.set_animation_loop(anim_name, anim_name in ["idle", "run", "walk"])
+		frames.set_animation_loop(anim_name, anim_name in ["idle", "run", "walk", "jump", "fall"])
 		for idx in indices:
 			var atlas := AtlasTexture.new()
 			atlas.atlas = texture

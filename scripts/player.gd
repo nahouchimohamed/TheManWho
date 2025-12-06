@@ -15,6 +15,11 @@ const HURT_LOCK := 0.28
 const DEATHBLOW_DURATION := 0.75
 const INPUT_BUFFER := 0.14
 const FRAME := 128
+const COYOTE_TIME := 0.12
+const JUMP_BUFFER := 0.12
+const ACCEL := 1800.0
+const FRICTION := 2200.0
+const AIR_ACCEL := 1200.0
 
 enum State { IDLE, ATTACK, DEFLECT, HURT, DEATHBLOW, DEAD }
 enum Buffered { NONE, ATTACK, DEFLECT, DEATHBLOW }
@@ -29,6 +34,8 @@ var _buffer_timer: float = 0.0
 var _deathblow_start: Vector2 = Vector2.ZERO
 var _deathblow_end: Vector2 = Vector2.ZERO
 var _parry_success_flash: float = 0.0
+var _coyote: float = 0.0
+var _jump_buffer: float = 0.0
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var attack_hitbox: Area2D = $AttackHitbox
@@ -59,40 +66,59 @@ func _ready() -> void:
 
 func _setup_sprite() -> void:
 	var tex: Texture2D = load("res://assets/sprites/player_sheet.png")
+	# Sheet: idle4 run6 jump2 fall2 swing4 parry5 hurt1 deathblow5 dead1 = 30
 	sprite.sprite_frames = SpriteFramesUtil.from_sheet(
 		tex,
 		FRAME,
 		FRAME,
 		{
-			"idle": [0, 1],
-			"run": [2, 3, 4, 5],
-			"swing": [6, 7, 8, 9],
-			"parry": [10, 11, 12, 13, 14],
-			"hurt": [15],
-			"deathblow": [16, 17, 18, 19, 20],
-			"dead": [21],
+			"idle": [0, 1, 2, 3],
+			"run": [4, 5, 6, 7, 8, 9],
+			"jump": [10, 11],
+			"fall": [12, 13],
+			"swing": [14, 15, 16, 17],
+			"parry": [18, 19, 20, 21, 22],
+			"hurt": [23],
+			"deathblow": [24, 25, 26, 27, 28],
+			"dead": [29],
 		},
 		10.0
 	)
-	sprite.sprite_frames.set_animation_speed("idle", 4.0)
-	sprite.sprite_frames.set_animation_speed("run", 10.0)
-	sprite.sprite_frames.set_animation_speed("swing", 12.0)
+	sprite.sprite_frames.set_animation_speed("idle", 6.0)
+	sprite.sprite_frames.set_animation_speed("run", 12.0)
+	sprite.sprite_frames.set_animation_speed("jump", 8.0)
+	sprite.sprite_frames.set_animation_speed("fall", 8.0)
+	sprite.sprite_frames.set_animation_speed("swing", 14.0)
 	sprite.sprite_frames.set_animation_speed("parry", 16.0)
-	sprite.sprite_frames.set_animation_speed("deathblow", 10.0)
+	sprite.sprite_frames.set_animation_speed("deathblow", 11.0)
 	sprite.sprite_frames.set_animation_loop("parry", false)
 	sprite.sprite_frames.set_animation_loop("deathblow", false)
 	sprite.sprite_frames.set_animation_loop("swing", false)
-	# Feet near collision bottom (~ -6) so HD sheets sit on the path
-	sprite.offset = Vector2(0, -82)
-	sprite.scale = Vector2(1.15, 1.15)
+	# Side-view Idle Slayer feet near bottom of 128px frame
+	sprite.offset = Vector2(0, -64)
+	sprite.scale = Vector2(1.0, 1.0)
 	spark.texture = load("res://assets/sprites/parry_spark.png")
 	spark.centered = true
-	spark.scale = Vector2(1.6, 1.6)
+	spark.scale = Vector2(1.35, 1.35)
 
 
 func _physics_process(delta: float) -> void:
-	if not is_on_floor():
+	var on_floor := is_on_floor()
+	if on_floor:
+		_coyote = COYOTE_TIME
+	else:
+		_coyote = maxf(0.0, _coyote - delta)
 		velocity.y += gravity * delta
+
+	if Input.is_action_just_pressed("jump"):
+		_jump_buffer = JUMP_BUFFER
+	else:
+		_jump_buffer = maxf(0.0, _jump_buffer - delta)
+
+	# Variable jump cut
+	if not Input.is_action_pressed("jump") and velocity.y < 0.0 and state == State.IDLE:
+		velocity.y *= 0.55
+
 	_update_posture_decay(delta)
 
 	if _buffer_timer > 0.0:
@@ -109,7 +135,7 @@ func _physics_process(delta: float) -> void:
 	_capture_buffer_inputs()
 
 	if is_dead:
-		velocity.x = move_toward(velocity.x, 0.0, move_speed * delta)
+		velocity.x = move_toward(velocity.x, 0.0, FRICTION * delta)
 		move_and_slide()
 		return
 
@@ -166,18 +192,44 @@ func _consume_buffer() -> bool:
 	return false
 
 
-func _process_idle(_delta: float) -> void:
-	var dir := Input.get_axis("move_left", "move_right")
-	velocity.x = dir * move_speed
+func _apply_move_accel(delta: float, dir: float) -> void:
+	var rate := ACCEL if is_on_floor() else AIR_ACCEL
 	if dir != 0.0:
+		velocity.x = move_toward(velocity.x, dir * move_speed, rate * delta)
 		facing = 1 if dir > 0.0 else -1
+	else:
+		velocity.x = move_toward(velocity.x, 0.0, FRICTION * delta)
+
+
+func _try_jump() -> bool:
+	if _jump_buffer <= 0.0:
+		return false
+	if not (is_on_floor() or _coyote > 0.0):
+		return false
+	velocity.y = jump_velocity
+	_jump_buffer = 0.0
+	_coyote = 0.0
+	SFX.play("jump", randf_range(0.95, 1.05))
+	return true
+
+
+func _play_locomotion_anim(dir: float) -> void:
+	if not is_on_floor():
+		if velocity.y < -40.0:
+			_play_anim("jump")
+		else:
+			_play_anim("fall")
+	elif absf(dir) > 0.1 or absf(velocity.x) > 40.0:
 		_play_anim("run")
 	else:
 		_play_anim("idle")
 
-	if Input.is_action_just_pressed("jump") and is_on_floor():
-		velocity.y = jump_velocity
-		SFX.play("jump", randf_range(0.95, 1.05))
+
+func _process_idle(delta: float) -> void:
+	var dir := Input.get_axis("move_left", "move_right")
+	_apply_move_accel(delta, dir)
+	_try_jump()
+	_play_locomotion_anim(dir)
 
 	if _consume_buffer():
 		return
@@ -192,8 +244,8 @@ func _process_idle(_delta: float) -> void:
 		return
 
 
-func _process_attack(_delta: float) -> void:
-	velocity.x = move_toward(velocity.x, 0.0, move_speed * 5.0 * _delta)
+func _process_attack(delta: float) -> void:
+	velocity.x = move_toward(velocity.x, 0.0, FRICTION * 2.5 * delta)
 	var elapsed := ATTACK_DURATION - _state_timer
 	var active := elapsed >= ATTACK_ACTIVE_START and elapsed <= ATTACK_ACTIVE_END
 	attack_shape.disabled = not active
@@ -203,8 +255,8 @@ func _process_attack(_delta: float) -> void:
 		_consume_buffer()
 
 
-func _process_deflect(_delta: float) -> void:
-	velocity.x = move_toward(velocity.x, 0.0, move_speed * 8.0 * _delta)
+func _process_deflect(delta: float) -> void:
+	velocity.x = move_toward(velocity.x, 0.0, FRICTION * 3.0 * delta)
 	# No automatic spark — only on successful parry via _parry_success_flash
 	if _state_timer <= 0.0:
 		if _parry_success_flash <= 0.0:
@@ -213,8 +265,8 @@ func _process_deflect(_delta: float) -> void:
 		_consume_buffer()
 
 
-func _process_hurt(_delta: float) -> void:
-	velocity.x = move_toward(velocity.x, 0.0, move_speed * 4.0 * _delta)
+func _process_hurt(delta: float) -> void:
+	velocity.x = move_toward(velocity.x, 0.0, FRICTION * 2.0 * delta)
 	if _state_timer <= 0.0:
 		state = State.IDLE
 		_consume_buffer()
@@ -232,7 +284,7 @@ func _process_deathblow(delta: float) -> void:
 		_deathblow_target.take_damage(999.0, 0.0)
 		_parry_success_flash = 0.18
 		spark.visible = true
-		spark.position = Vector2(34.0 * facing, -30.0)
+		spark.position = Vector2(28.0 * facing, -28.0)
 
 	if _state_timer <= 0.0:
 		spark.visible = false
@@ -323,15 +375,15 @@ func _update_deathblow_prompt() -> void:
 	deathblow_prompt.visible = can_deathblow and state != State.DEATHBLOW
 	if deathblow_prompt.visible:
 		deathblow_prompt.text = "E — Deathblow"
-		deathblow_prompt.position = Vector2(-70, -92)
+		deathblow_prompt.position = Vector2(-70, -78)
 		deathblow_prompt.modulate = Color(1.0, 0.85, 0.4, 0.75 + 0.25 * sin(Time.get_ticks_msec() * 0.01))
 
 
 func _update_visuals() -> void:
 	sprite.flip_h = facing < 0
-	attack_hitbox.position.x = 40.0 * facing
+	attack_hitbox.position.x = 36.0 * facing
 	if _parry_success_flash <= 0.0:
-		spark.position = Vector2(30.0 * facing, -36.0)
+		spark.position = Vector2(26.0 * facing, -30.0)
 
 
 func _play_anim(anim: String) -> void:

@@ -14,11 +14,11 @@ var is_dead: bool = false
 func _ready() -> void:
 	health = max_health
 	label.text = "Villager"
-	label.position = Vector2(-40, -100)
+	label.position = Vector2(-40, -86)
 	sprite.texture = load("res://assets/sprites/ally.png")
 	sprite.centered = true
-	sprite.offset = Vector2(0, -60)
-	sprite.scale = Vector2(1.15, 1.15)
+	sprite.offset = Vector2(0, -64)
+	sprite.scale = Vector2(1.0, 1.0)
 
 
 func take_damage(amount: float) -> void:
