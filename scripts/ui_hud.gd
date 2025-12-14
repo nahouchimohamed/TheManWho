@@ -19,26 +19,47 @@ var _deathblow_ready: bool = false
 func setup(player: Combatant, enemy: Combatant) -> void:
 	_player = player
 	_enemy = enemy
-	enemy_panel.visible = true
+	enemy_panel.visible = enemy != null
 	player_label.text = "YOU"
-	enemy_label.text = "ASHEN BLADE"
+	enemy_label.text = "FOE"
 	_style_bar(player_hp, Color(0.62, 0.2, 0.18), Color(0.1, 0.08, 0.08))
 	_style_bar(player_posture, Color(0.9, 0.76, 0.32), Color(0.1, 0.08, 0.08))
 	_style_bar(enemy_hp, Color(0.62, 0.2, 0.18), Color(0.1, 0.08, 0.08))
 	_style_bar(enemy_posture, Color(0.95, 0.78, 0.28), Color(0.1, 0.08, 0.08))
 	_player.health_changed.connect(_on_player_health)
 	_player.posture_changed.connect(_on_player_posture)
-	_enemy.health_changed.connect(_on_enemy_health)
-	_enemy.posture_changed.connect(_on_enemy_posture)
-	if _enemy.has_signal("posture_broken"):
-		_enemy.posture_broken.connect(_on_enemy_posture_broken)
 	_player.health_changed.emit(_player.health, _player.max_health)
 	_player.posture_changed.emit(_player.posture, _player.max_posture)
-	_enemy.health_changed.emit(_enemy.health, _enemy.max_health)
-	_enemy.posture_changed.emit(_enemy.posture, _enemy.max_posture)
+	if enemy != null:
+		set_enemy_target(enemy, "ASHEN BLADE")
 	hint.text = "A/D move · Space jump · LMB katana · RMB parry · E deathblow"
 	banner.add_theme_font_size_override("font_size", 22)
 	banner.modulate = Color(1.0, 0.95, 0.88, 0.92)
+
+
+func set_enemy_target(enemy: Combatant, label_text: String = "FOE") -> void:
+	if _enemy != null and is_instance_valid(_enemy):
+		if _enemy.health_changed.is_connected(_on_enemy_health):
+			_enemy.health_changed.disconnect(_on_enemy_health)
+		if _enemy.posture_changed.is_connected(_on_enemy_posture):
+			_enemy.posture_changed.disconnect(_on_enemy_posture)
+		if _enemy.has_signal("posture_broken") and _enemy.posture_broken.is_connected(_on_enemy_posture_broken):
+			_enemy.posture_broken.disconnect(_on_enemy_posture_broken)
+	_enemy = enemy
+	_deathblow_ready = false
+	if enemy == null or not is_instance_valid(enemy):
+		enemy_panel.visible = false
+		return
+	enemy_panel.visible = true
+	enemy_label.text = label_text.to_upper()
+	enemy_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.9))
+	enemy_posture.modulate = Color.WHITE
+	enemy.health_changed.connect(_on_enemy_health)
+	enemy.posture_changed.connect(_on_enemy_posture)
+	if enemy.has_signal("posture_broken"):
+		enemy.posture_broken.connect(_on_enemy_posture_broken)
+	enemy.health_changed.emit(enemy.health, enemy.max_health)
+	enemy.posture_changed.emit(enemy.posture, enemy.max_posture)
 
 
 func _style_bar(bar: ProgressBar, fill: Color, bg: Color) -> void:
@@ -67,8 +88,11 @@ func mark_deathblow_ready(ready: bool) -> void:
 		enemy_label.text = "DEATHBLOW"
 		enemy_label.add_theme_color_override("font_color", Color(1.0, 0.82, 0.35))
 		enemy_posture.modulate = Color(1.35, 1.15, 0.55)
-	elif enemy_panel.visible:
-		enemy_label.text = "ASHEN BLADE"
+	elif enemy_panel.visible and _enemy != null and is_instance_valid(_enemy):
+		var n := "FOE"
+		if "display_name" in _enemy:
+			n = str(_enemy.display_name)
+		enemy_label.text = n.to_upper()
 		enemy_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.9))
 
 
@@ -119,9 +143,12 @@ func _on_enemy_posture(current: float, maximum: float) -> void:
 	if maximum > 0.0 and current / maximum > 0.85:
 		enemy_posture.modulate = Color(1.3, 1.1, 0.5)
 		enemy_label.text = "POSTURE BREAKING"
-	elif enemy_panel.visible:
+	elif enemy_panel.visible and _enemy != null and is_instance_valid(_enemy):
 		enemy_posture.modulate = Color.WHITE
-		enemy_label.text = "ASHEN BLADE"
+		var n := "FOE"
+		if "display_name" in _enemy:
+			n = str(_enemy.display_name)
+		enemy_label.text = n.to_upper()
 
 
 func _on_enemy_posture_broken() -> void:

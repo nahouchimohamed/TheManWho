@@ -7,21 +7,29 @@ signal telegraph_started
 enum Phase { IDLE, TELEGRAPH, STRIKE, RECOVER, BROKEN, DEAD }
 
 const STRIKE_DAMAGE := 16.0
+const STRIKE_DAMAGE_TRASH := 10.0
 const STRIKE_POSTURE := 26.0
+const STRIKE_POSTURE_TRASH := 16.0
 const TELEGRAPH_TIME := 0.72
+const TELEGRAPH_TIME_TRASH := 0.55
 const STRIKE_ACTIVE_START := 0.04
 const STRIKE_ACTIVE_END := 0.14
 const STRIKE_TIME := 0.28
 const RECOVER_TIME := 0.7
 const ATTACK_RANGE := 78.0
-const CHASE_RANGE := 460.0
+const CHASE_RANGE := 420.0
+const AGGRO_RANGE := 340.0
 const FRAME := 128
+
+@export var is_boss: bool = false
+@export var display_name: String = "Shade"
 
 var phase: Phase = Phase.IDLE
 var _phase_timer: float = 0.8
 var _player: Combatant = null
 var _strike_resolved: bool = false
 var _combo_index: int = 0
+var _aggro: bool = false
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var strike_hitbox: Area2D = $StrikeHitbox
@@ -31,10 +39,8 @@ var _combo_index: int = 0
 
 func _ready() -> void:
 	super._ready()
-	max_health = 90.0
-	max_posture = 100.0
+	_apply_role_stats()
 	health = max_health
-	move_speed = 155.0
 	strike_shape.disabled = true
 	collision_layer = 4
 	collision_mask = 1
@@ -50,6 +56,34 @@ func _ready() -> void:
 	_play_anim("idle")
 
 
+func _apply_role_stats() -> void:
+	if is_boss:
+		display_name = "Ashen Blade"
+		max_health = 160.0
+		max_posture = 120.0
+		move_speed = 150.0
+		modulate = Color(1.05, 0.92, 0.95)
+		_aggro = false
+	else:
+		if display_name == "" or display_name == "Shade":
+			display_name = "Path Shade"
+		max_health = 45.0
+		max_posture = 55.0
+		move_speed = 170.0
+		modulate = Color(0.85, 0.88, 1.0)
+	if is_inside_tree() and sprite:
+		sprite.scale = Vector2(1.15, 1.15) if is_boss else Vector2(0.88, 0.88)
+
+
+func configure(as_boss: bool, name_override: String = "") -> void:
+	is_boss = as_boss
+	if name_override != "":
+		display_name = name_override
+	_apply_role_stats()
+	health = max_health
+	_emit_vitals()
+
+
 func _ensure_telegraph_fx() -> void:
 	if telegraph_fx != null:
 		return
@@ -59,14 +93,14 @@ func _ensure_telegraph_fx() -> void:
 	var glow := ColorRect.new()
 	glow.name = "Glow"
 	glow.size = Vector2(56, 56)
-	glow.position = Vector2(8, -70)
+	glow.position = Vector2(8, -58)
 	glow.color = Color(0.95, 0.35, 0.2, 0.0)
 	telegraph_fx.add_child(glow)
 	var mark := Label.new()
 	mark.name = "Mark"
 	mark.text = "!"
 	mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	mark.position = Vector2(18, -88)
+	mark.position = Vector2(18, -72)
 	mark.add_theme_font_size_override("font_size", 28)
 	mark.add_theme_color_override("font_color", Color(1.0, 0.45, 0.25))
 	mark.modulate.a = 0.0
@@ -89,8 +123,11 @@ func _setup_sprite() -> void:
 		},
 		8.0
 	)
-	sprite.offset = Vector2(0, -82)
-	sprite.scale = Vector2(1.15, 1.15)
+	sprite.offset = Vector2(0, -64)
+	if is_boss:
+		sprite.scale = Vector2(1.15, 1.15)
+	else:
+		sprite.scale = Vector2(0.88, 0.88)
 	sprite.sprite_frames.set_animation_speed("telegraph", 5.0)
 	sprite.sprite_frames.set_animation_speed("strike", 14.0)
 	sprite.sprite_frames.set_animation_loop("dead", false)
@@ -154,6 +191,13 @@ func _process_idle(_delta: float) -> void:
 	var dist := absf(_player.global_position.x - global_position.x)
 	face_toward(_player.global_position.x)
 
+	if not _aggro and dist > AGGRO_RANGE:
+		velocity.x = 0.0
+		_play_anim("idle")
+		return
+	if dist <= AGGRO_RANGE:
+		_aggro = true
+
 	if dist > CHASE_RANGE:
 		velocity.x = 0.0
 		_play_anim("idle")
@@ -172,7 +216,8 @@ func _process_idle(_delta: float) -> void:
 func _process_telegraph(_delta: float) -> void:
 	velocity.x = 0.0
 	_play_anim("telegraph")
-	var t := 1.0 - clampf(_phase_timer / TELEGRAPH_TIME, 0.0, 1.0)
+	var tele := TELEGRAPH_TIME if is_boss else TELEGRAPH_TIME_TRASH
+	var t := 1.0 - clampf(_phase_timer / tele, 0.0, 1.0)
 	_set_telegraph_visible(true, 0.25 + t * 0.65)
 	# Pulse sprite tint so the wind-up is obvious
 	sprite.modulate = Color(1.0, 0.75 + 0.25 * t, 0.55 + 0.2 * t)
@@ -221,7 +266,7 @@ func _process_recover(_delta: float) -> void:
 
 func _start_telegraph() -> void:
 	phase = Phase.TELEGRAPH
-	_phase_timer = TELEGRAPH_TIME
+	_phase_timer = TELEGRAPH_TIME if is_boss else TELEGRAPH_TIME_TRASH
 	_strike_resolved = false
 	SFX.play("telegraph", randf_range(0.9, 1.05))
 	telegraph_started.emit()
@@ -242,7 +287,9 @@ func _try_resolve_strike() -> void:
 	var dy := absf(_player.global_position.y - global_position.y)
 	if dx <= ATTACK_RANGE + 8.0 and dy <= 55.0:
 		_strike_resolved = true
-		var result: Dictionary = _player.receive_enemy_attack(self, STRIKE_DAMAGE, STRIKE_POSTURE)
+		var dmg := STRIKE_DAMAGE if is_boss else STRIKE_DAMAGE_TRASH
+		var post := STRIKE_POSTURE if is_boss else STRIKE_POSTURE_TRASH
+		var result: Dictionary = _player.receive_enemy_attack(self, dmg, post)
 		attack_resolved.emit(bool(result.get("deflected", false)))
 
 
