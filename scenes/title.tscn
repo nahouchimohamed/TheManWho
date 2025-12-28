@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://bqtitle001"]
 
 [ext_resource type="Script" path="res://scripts/title.gd" id="1_title"]
-[ext_resource type="Texture2D" path="res://assets/sprites/title_bg.jpg" id="2_bg"]
+[ext_resource type="Texture2D" path="res://assets/sprites/title_bg.png" id="2_bg"]
 
 [node name="Title" type="Control"]
 layout_mode = 3
