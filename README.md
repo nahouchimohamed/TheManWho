@@ -32,4 +32,4 @@ After the duel, the ally dies → credits rename the game to **The Man Who Lost 
 
 ## Prototype scope
 
-One arena, one enemy, one ending (`lost_it_all`). Built to test combat feel and the title-morph credits idea.
+One path level (shades + Ashen Blade boss), one ending (`lost_it_all`). Built to test combat feel and the title-morph credits idea.
