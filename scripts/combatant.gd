@@ -20,12 +20,15 @@ var posture: float
 var is_dead: bool = false
 var is_posture_broken: bool = false
 var _posture_decay_timer: float = 0.0
+var _base_modulate: Color = Color.WHITE
+var _flash_tween: Tween
 var gravity: float = ProjectSettings.get_setting("physics/2d/default_gravity")
 
 
 func _ready() -> void:
 	health = max_health
 	posture = 0.0
+	_base_modulate = modulate
 	_emit_vitals()
 
 
@@ -35,6 +38,19 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += gravity * delta
 	_update_posture_decay(delta)
+
+
+func remember_modulate() -> void:
+	_base_modulate = modulate
+
+
+func _play_hit_flash() -> void:
+	if _flash_tween and _flash_tween.is_valid():
+		_flash_tween.kill()
+	modulate = Color(1.55, 1.45, 1.35, 1.0)
+	_flash_tween = create_tween()
+	_flash_tween.tween_property(self, "modulate", _base_modulate, 0.12)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 
 func _update_posture_decay(delta: float) -> void:
@@ -57,6 +73,7 @@ func take_damage(amount: float, posture_amount: float = 0.0) -> void:
 	if is_dead:
 		return
 	health = maxf(0.0, health - amount)
+	_play_hit_flash()
 	health_changed.emit(health, max_health)
 	if posture_amount > 0.0:
 		add_posture(posture_amount)

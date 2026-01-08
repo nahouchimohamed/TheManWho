@@ -71,6 +71,7 @@ func _apply_role_stats() -> void:
 		max_posture = 55.0
 		move_speed = 170.0
 		modulate = Color(0.85, 0.88, 1.0)
+	remember_modulate()
 	if is_inside_tree() and sprite:
 		sprite.scale = Vector2(1.15, 1.15) if is_boss else Vector2(0.88, 0.88)
 

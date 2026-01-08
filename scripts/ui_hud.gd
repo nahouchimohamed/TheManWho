@@ -9,11 +9,13 @@ extends CanvasLayer
 @onready var banner: Label = $Root/Banner
 @onready var player_label: Label = $Root/PlayerPanel/Label
 @onready var enemy_label: Label = $Root/EnemyPanel/Label
+@onready var vignette: ColorRect = $Root/Vignette
 
 var _player: Combatant
 var _enemy: Combatant
 var _banner_token: int = 0
 var _deathblow_ready: bool = false
+var _low_hp: bool = false
 
 
 func setup(player: Combatant, enemy: Combatant) -> void:
@@ -26,6 +28,8 @@ func setup(player: Combatant, enemy: Combatant) -> void:
 	_style_bar(player_posture, Color(0.9, 0.76, 0.32), Color(0.1, 0.08, 0.08))
 	_style_bar(enemy_hp, Color(0.62, 0.2, 0.18), Color(0.1, 0.08, 0.08))
 	_style_bar(enemy_posture, Color(0.95, 0.78, 0.28), Color(0.1, 0.08, 0.08))
+	vignette.color = Color(0.08, 0.04, 0.05, 0.1)
+	vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_player.health_changed.connect(_on_player_health)
 	_player.posture_changed.connect(_on_player_posture)
 	_player.health_changed.emit(_player.health, _player.max_health)
@@ -35,6 +39,13 @@ func setup(player: Combatant, enemy: Combatant) -> void:
 	hint.text = "A/D move · Space jump · LMB katana · RMB parry · E deathblow"
 	banner.add_theme_font_size_override("font_size", 22)
 	banner.modulate = Color(1.0, 0.95, 0.88, 0.92)
+
+
+func _process(_delta: float) -> void:
+	if not _low_hp:
+		return
+	var pulse := 0.22 + 0.1 * (0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008))
+	vignette.color = Color(0.45, 0.05, 0.08, pulse)
 
 
 func set_enemy_target(enemy: Combatant, label_text: String = "FOE") -> void:
@@ -119,6 +130,14 @@ func set_hint(text: String) -> void:
 func _on_player_health(current: float, maximum: float) -> void:
 	player_hp.max_value = maximum
 	player_hp.value = current
+	var ratio := 1.0 if maximum <= 0.0 else current / maximum
+	_low_hp = ratio <= 0.35 and current > 0.0
+	if not _low_hp:
+		vignette.color = Color(0.08, 0.04, 0.05, 0.1)
+	if ratio <= 0.35:
+		player_hp.modulate = Color(1.25, 0.85, 0.85)
+	else:
+		player_hp.modulate = Color.WHITE
 
 
 func _on_player_posture(current: float, maximum: float) -> void:
