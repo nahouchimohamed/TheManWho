@@ -17,9 +17,10 @@ const INPUT_BUFFER := 0.14
 const FRAME := 128
 const COYOTE_TIME := 0.12
 const JUMP_BUFFER := 0.12
-const ACCEL := 1800.0
-const FRICTION := 2200.0
-const AIR_ACCEL := 1200.0
+const ACCEL := 2100.0
+const FRICTION := 2400.0
+const AIR_ACCEL := 1350.0
+const LAND_DUST_TIME := 0.14
 
 enum State { IDLE, ATTACK, DEFLECT, HURT, DEATHBLOW, DEAD }
 enum Buffered { NONE, ATTACK, DEFLECT, DEATHBLOW }
@@ -36,6 +37,8 @@ var _deathblow_end: Vector2 = Vector2.ZERO
 var _parry_success_flash: float = 0.0
 var _coyote: float = 0.0
 var _jump_buffer: float = 0.0
+var _was_on_floor: bool = true
+var _land_squash: float = 0.0
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var attack_hitbox: Area2D = $AttackHitbox
@@ -106,9 +109,14 @@ func _physics_process(delta: float) -> void:
 	var on_floor := is_on_floor()
 	if on_floor:
 		_coyote = COYOTE_TIME
+		if not _was_on_floor and velocity.y >= 0.0:
+			_land_squash = LAND_DUST_TIME
 	else:
 		_coyote = maxf(0.0, _coyote - delta)
 		velocity.y += gravity * delta
+	_was_on_floor = on_floor
+	if _land_squash > 0.0:
+		_land_squash = maxf(0.0, _land_squash - delta)
 
 	if Input.is_action_just_pressed("jump"):
 		_jump_buffer = JUMP_BUFFER
@@ -384,6 +392,12 @@ func _update_visuals() -> void:
 	attack_hitbox.position.x = 36.0 * facing
 	if _parry_success_flash <= 0.0:
 		spark.position = Vector2(26.0 * facing, -30.0)
+	# Brief landing squash so jumps feel grounded
+	if _land_squash > 0.0:
+		var k := _land_squash / LAND_DUST_TIME
+		sprite.scale = Vector2(1.0 + 0.08 * k, 1.0 - 0.12 * k)
+	else:
+		sprite.scale = Vector2.ONE
 
 
 func _play_anim(anim: String) -> void:

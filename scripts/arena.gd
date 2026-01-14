@@ -184,17 +184,30 @@ func _on_boss_defeated() -> void:
 
 
 func _on_perfect_deflect() -> void:
-	_hitstop(0.035)
-	_shake(0.8)
+	_hitstop(0.045)
+	_shake(1.15)
+	_parry_zoom_punch()
 	if not _taught_parry:
 		_taught_parry = true
 		hud.set_hint("Good — fill their gold posture bar, then press E")
 
 
 func _on_deathblow() -> void:
-	_hitstop(0.06)
-	_shake(1.4)
+	_hitstop(0.08)
+	_shake(1.6)
+	var punch := create_tween()
+	punch.tween_property(camera, "zoom", Vector2(0.72, 0.72), 0.08)
+	punch.tween_property(camera, "zoom", Vector2(0.62, 0.62), 0.28)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	hud.set_hint("")
+
+
+func _parry_zoom_punch() -> void:
+	var base := camera.zoom
+	var tw := create_tween()
+	tw.tween_property(camera, "zoom", base * 1.06, 0.05)
+	tw.tween_property(camera, "zoom", base, 0.18)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
 func _on_deathblow_ready(ready: bool) -> void:
